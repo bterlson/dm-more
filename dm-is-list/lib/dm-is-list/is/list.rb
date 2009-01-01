@@ -32,6 +32,9 @@ module DataMapper
           # a position has been set before save => open up and make room for item
           # no position has been set => move to bottom of my scope-list (or keep detached?)
           self.send(:move_without_saving, (self.position || :lowest))
+        
+          # on create, set moved to false so we can move the list item after creating it
+          self.moved = false
         end
 
         before :update do

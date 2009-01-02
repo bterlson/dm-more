@@ -105,7 +105,7 @@ if HAS_SQLITE3 || HAS_MYSQL || HAS_POSTGRES
 
         it 'should not set the position to be less than the first position' do
           pending
-
+          
           @todo_1.position = -1
           @todo_1.save
 
@@ -113,7 +113,7 @@ if HAS_SQLITE3 || HAS_MYSQL || HAS_POSTGRES
         end
 
         it 'should not set the position to be greater than the number of items in the list' do
-          @todo_3.position = 20
+          @todo_3.position = 100
           @todo_3.save
 
           Todo.get(3).position.should == 3
@@ -310,9 +310,10 @@ if HAS_SQLITE3 || HAS_MYSQL || HAS_POSTGRES
           pending
 
           # This does not work.
-          # @todo_1.move(:to => 2)
-
-          # Todo.get(1).position.should == 2
+          
+          @todo_1.move(:to => 3)
+          
+          Todo.get(1).position.should == 3
         end
 
         it 'should rearrange the list' do
@@ -320,11 +321,11 @@ if HAS_SQLITE3 || HAS_MYSQL || HAS_POSTGRES
 
           # This is broken due to 'should update the position'.
 
-          # @todo_1.move(:to => 2)
+          @todo_1.move(:to => 2)
           
-          # Todo.get(1).position.should == 2
-          # Todo.get(2).position.should == 1
-          # Todo.get(3).position.should == 3
+          Todo.get(1).position.should == 2
+          Todo.get(2).position.should == 1
+          Todo.get(3).position.should == 3
         end
 
         it 'should not set the position to be less than the first position' do
@@ -344,17 +345,17 @@ if HAS_SQLITE3 || HAS_MYSQL || HAS_POSTGRES
 
           # This is broken due to 'should update the position'.
 
-          # @todo_3.move(:to => 1)
+          @todo_3.move(:to => 1)
           
-          # Todo.get(3).position.should == 1
-          # Todo.get(1).position.should == 2
-          # Todo.get(2).position.should == 3
+          Todo.get(3).position.should == 1
+          Todo.get(1).position.should == 2
+          Todo.get(2).position.should == 3
           
-          # @todo_1.move(:to => 2)
+          @todo_1.move(:to => 2)
           
-          # Todo.get(1).position.should == 1
-          # Todo.get(3).position.should == 2
-          # Todo.get(2).position.should == 3
+          Todo.get(1).position.should == 1
+          Todo.get(3).position.should == 2
+          Todo.get(2).position.should == 3
         end
       end
     end
@@ -501,9 +502,9 @@ if HAS_SQLITE3 || HAS_MYSQL || HAS_POSTGRES
 
         # This is currently broken, the list is broken afterwords (duplicate positions, etc.)
         
-        # Todo.get(3).position.should == 1
-        # Todo.get(2).position.should == 2
-        # Todo.get(1).position.should == 3
+        Todo.get(3).position.should == 1
+        Todo.get(2).position.should == 2
+        Todo.get(1).position.should == 3
       end
     end
   end

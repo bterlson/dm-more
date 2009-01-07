@@ -1,7 +1,7 @@
 require "rubygems"
-require 'pathname' 
+require 'pathname'
 
-gem 'dm-core', '~>0.9.8'
+gem 'dm-core', '~>0.9.10'
 require 'dm-core'
 
 spec_dir_path = Pathname(__FILE__).dirname.expand_path
@@ -58,8 +58,23 @@ Benchmark.warmer(TIMES) do
   end
 end
 
+require 'nokogiri'
+load 'dm-serializer/xml_serializers.rb'
+
+puts "Nokogiri"
+Benchmark.warmer(TIMES) do
+  group("Serialization:") do
+    report "Single Resource" do
+      cow.to_xml
+    end
+    report "Collection" do
+      all_cows.to_xml
+    end
+  end
+end
+
 require 'libxml'
-load 'dm-serializer/to_xml.rb'
+load 'dm-serializer/xml_serializers.rb'
 
 puts "LibXML"
 Benchmark.warmer(TIMES) do

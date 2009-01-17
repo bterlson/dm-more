@@ -16,10 +16,10 @@ if COUCHDB_AVAILABLE
     property :location, JsonObject
 
     # creates methods for accessing stored/indexed views in the CouchDB database
-    view :by_name, { "map" => "function(doc) { if (#{couchdb_types_condition}) { emit(doc.name, doc); } }" }
-    view :by_age,  { "map" => "function(doc) { if (#{couchdb_types_condition}) { emit(doc.age, doc); } }" }
-    view :count,   { "map" => "function(doc) { if (#{couchdb_types_condition}) { emit(null, 1); } }",
-                      "reduce" => "function(keys, values) { return sum(values); }" }
+    view(:by_name) {{ "map" => "function(doc) { if (#{couchdb_types_condition}) { emit(doc.name, doc); } }" }}
+    view(:by_age)  {{ "map" => "function(doc) { if (#{couchdb_types_condition}) { emit(doc.age, doc); } }" }}
+    view(:count)   {{ "map" => "function(doc) { if (#{couchdb_types_condition}) { emit(null, 1); } }",
+                      "reduce" => "function(keys, values) { return sum(values); }" }}
 
     belongs_to :company
 
@@ -48,7 +48,6 @@ if COUCHDB_AVAILABLE
       :couch
     end
 
-    property :type, Discriminator
     property :name, String
   end
 
@@ -186,12 +185,12 @@ if COUCHDB_AVAILABLE
       end
 
       before(:each) do
-        @user = User.new(:name => "Jamie", :age => 67, :wealth => 11.5)
-        @user.save
+        @jamie = User.create(:name => "Jamie", :age => 67, :wealth => 11.5)
+        @aaron = User.create(:name => "Aaron", :age => 30, :wealth => 20)
       end
 
       after(:each) do
-        @user.destroy
+        [@jamie, @aaron].each { |user| user.destroy }
       end
 
       it "should be able to call stored views" do
@@ -207,7 +206,12 @@ if COUCHDB_AVAILABLE
       end
 
       it "should return a value from a view with reduce defined" do
-        User.count.should == [ OpenStruct.new({ "value" => User.all.length, "key" => nil }) ]
+        User.count.should == [ { "value" => User.all.length, "key" => nil } ]
+      end
+
+      it "should be able to perform ordered multi-key fetch on a view" do
+        User.by_name(:keys => ["Aaron", "Jamie"]).should == [@aaron, @jamie]
+        User.by_name(:keys => ["Jamie", "Aaron"]).should == [@jamie, @aaron]
       end
 
     end
@@ -232,6 +236,11 @@ if COUCHDB_AVAILABLE
     end
 
     describe 'STI' do
+
+      before(:all) do
+        Person.auto_migrate!
+      end
+
       it "should override default type" do
         person = Person.new(:name => 'Bob')
         person.save.should be_true
@@ -253,6 +262,42 @@ if COUCHDB_AVAILABLE
         employee.destroy.should be_true
       end
 
+      it "should load descendents on parent.by_name" do
+        employee = Employee.new(:name => 'Bob', :rank => 'Peon')
+        employee.save.should be_true
+        Person.by_name(:key => 'Bob').include?(employee).should be_true
+        employee.destroy.should be_true
+      end
     end
+
+    describe 'JSON serialization' do
+      if DMSERIAL_AVAILABLE
+        before(:all) do
+          @moe = User.create(:name => "Moe", :age => 46, :wealth => 20)
+          @larry = User.create(:name => "Larry", :age => 42, :wealth => 10)
+          @curly = User.create(:name => "Curly", :age => 44, :wealth => 1)
+        end
+
+        after(:all) do
+          [@moe, @larry, @curly].each { |stooge| stooge.destroy }
+        end
+
+        it "should properly serialize a single resource" do
+          moe_serial = JSON.parse(@moe.to_json)
+          moe_serial['name'].should == "Moe"
+          moe_serial['age'].should == 46
+          moe_serial['wealth'].should == 20
+        end
+
+        it "should properly serialize a resource collection" do
+          stooges = JSON.parse(User.all.to_json)
+          stooges.length.should == 3
+          stooges.each { |stooge| stooge['name'].should_not be_blank }
+        end
+      else
+        it "requires dm-serializer to run serialization tests"
+      end
+    end
+
   end
 end

@@ -32,6 +32,7 @@ module DataMapper
         begin
           matches = []
 
+          return [] if value.nil? || (value <= 0)
           0.upto((Math.log(value) / Math.log(2)).ceil) do |i|
             pow = 2 ** i
             matches << flag_map[pow] if value & pow == pow
@@ -52,6 +53,7 @@ module DataMapper
 
       def self.typecast(value, property)
         case value
+        when nil   then nil
         when Array then value.map {|v| v.to_sym}
         else value.to_sym
         end

@@ -1,12 +1,15 @@
-# TODO: Debug logging
-
 require 'rubygems'
 require 'pathname'
 require Pathname(__FILE__).dirname + 'couchdb_adapter/version'
 gem 'dm-core', '~>0.9.10'
 require 'dm-core'
-require 'json'
-require 'ostruct'
+begin
+  gem "json"
+  require "json/ext"
+rescue LoadError
+  gem "json_pure"
+  require "json/pure"
+end
 require 'net/http'
 require 'uri'
 require Pathname(__FILE__).dirname + 'couchdb_adapter/attachments'
@@ -17,7 +20,7 @@ require Pathname(__FILE__).dirname + 'couchdb_adapter/view'
 module DataMapper
   module Resource
     # Converts a Resource to a JSON representation.
-    def to_json(dirty = false)
+    def to_couch_json(dirty = false)
       property_list = self.class.properties.select { |key, value| dirty ? self.dirty_attributes.key?(key) : true }
       data = {}
       for property in property_list do
@@ -68,9 +71,9 @@ module DataMapper
             resource.instance_variable_get(property.instance_variable_name)
           end
           if key.compact.empty?
-            result = http_post("/#{self.escaped_db_name}", resource.to_json(true))
+            result = http_post("/#{self.escaped_db_name}", resource.to_couch_json(true))
           else
-            result = http_put("/#{self.escaped_db_name}/#{key}", resource.to_json(true))
+            result = http_put("/#{self.escaped_db_name}/#{key}", resource.to_couch_json(true))
           end
           if result["ok"]
             resource.id = result["id"]
@@ -105,7 +108,7 @@ module DataMapper
           key = resource.class.key(self.name).map do |property|
             resource.instance_variable_get(property.instance_variable_name)
           end
-          result = http_put("/#{self.escaped_db_name}/#{key}", resource.to_json)
+          result = http_put("/#{self.escaped_db_name}/#{key}", resource.to_couch_json)
           if result["ok"]
             resource.id = result["id"]
             resource.rev = result["rev"]
@@ -121,7 +124,7 @@ module DataMapper
           http.request(build_request(query))
         end
         if query.view && query.model.views[query.view.to_sym].has_key?('reduce')
-          doc['rows'].map {|row| OpenStruct.new(row)}
+          doc['rows']
         else
           collection =
           if doc['rows'] && !doc['rows'].empty?
@@ -214,13 +217,28 @@ module DataMapper
         end
       end
 
+      ##
+      # Prepares a REST request to a stored view. If :keys is specified in
+      # the view options a POST request will be created per the CouchDB
+      # multi-document-fetch API.
+      #
+      # @param query<DataMapper::Query> the query
+      # @return request<Net::HTTPRequest> a request object
+      #
+      # @api private
       def view_request(query)
-        uri = "/#{self.escaped_db_name}/" +
-              "_view/" +
-              "#{query.model.base_model.to_s}/" +
-              "#{query.view}" +
-              "#{query_string(query)}"
-        request = Net::HTTP::Get.new(uri)
+        keys = query.view_options.delete(:keys)
+        uri = "/#{self.escaped_db_name}/_view/" +
+          "#{query.model.base_model.to_s}/" +
+          "#{query.view}" +
+          "#{query_string(query)}"
+        if keys
+          request = Net::HTTP::Post.new(uri)
+          request.body = { :keys => keys }.to_json
+        else
+          request = Net::HTTP::Get.new(uri)
+        end
+        request
       end
 
       def get_request(query)
@@ -228,6 +246,14 @@ module DataMapper
         request = Net::HTTP::Get.new(uri)
       end
 
+      ##
+      # Prepares a REST request to a temporary view. Though convenient for
+      # development, "slow" views should generally be avoided.
+      # 
+      # @param query<DataMapper::Query> the query
+      # @return request<Net::HTTPRequest> a request object
+      # 
+      # @api private
       def ad_hoc_request(query)
         if query.order.empty?
           key = "null"
@@ -238,7 +264,7 @@ module DataMapper
           key = "[#{key}]"
         end
 
-        request = Net::HTTP::Post.new("/#{self.escaped_db_name}/_temp_view#{query_string(query)}")
+        request = Net::HTTP::Post.new("/#{self.escaped_db_name}/_slow_view#{query_string(query)}")
         request["Content-Type"] = "application/json"
 
         couchdb_type_condition = ["doc.couchdb_type == '#{query.model.to_s}'"]
@@ -303,7 +329,7 @@ module DataMapper
               end
             end
         end
-        query_string << "count=#{query.limit}" if query.limit
+        query_string << "limit=#{query.limit}" if query.limit
         query_string << "descending=#{query.add_reversed?}" if query.add_reversed?
         query_string << "skip=#{query.offset}" if query.offset != 0
         query_string.empty? ? nil : "?#{query_string.join('&')}"
@@ -323,18 +349,22 @@ module DataMapper
       end
 
       def http_put(uri, data = nil)
+        DataMapper.logger.debug("PUT #{uri}")
         request { |http| http.put(uri, data) }
       end
 
       def http_post(uri, data)
+        DataMapper.logger.debug("POST #{uri}")
         request { |http| http.post(uri, data) }
       end
 
       def http_get(uri)
+        DataMapper.logger.debug("GET #{uri}")
         request { |http| http.get(uri) }
       end
 
       def http_delete(uri)
+        DataMapper.logger.debug("DELETE #{uri}")
         request { |http| http.delete(uri) }
       end
 
